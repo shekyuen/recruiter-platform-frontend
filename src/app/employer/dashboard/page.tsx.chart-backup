@@ -1,0 +1,513 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useAuthStore } from '@/store/authStore'
+import { useRouter } from 'next/navigation'
+import api from '@/lib/axios'
+import toast from 'react-hot-toast'
+import { 
+  UserGroupIcon, 
+  VideoCameraIcon, 
+  CurrencyDollarIcon, 
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  ClockIcon,
+  ChartBarIcon,
+  Bars3Icon,
+  XMarkIcon,
+  MagnifyingGlassIcon,
+  FunnelIcon,
+  AdjustmentsHorizontalIcon
+} from '@heroicons/react/24/outline'
+
+interface JobOpening {
+  id: string
+  title: string
+  description: string
+  status: string
+  urgency: string
+  salaryMin: number
+  salaryMax: number
+  placementFeePercent: number
+  createdAt: string
+  _count: {
+    submissions: number
+    offers: number
+  }
+}
+
+interface DashboardStats {
+  totalSubmissions: number
+  interviewsThisWeek: number
+  offersPending: number
+  hiredThisMonth: number
+  performanceMetrics: {
+    avgTimeToHire: number
+    conversionRate: number
+    topRecruiter: string
+  }
+}
+
+export default function EmployerDashboard() {
+  const { user, logout } = useAuthStore()
+  const router = useRouter()
+  const [jobs, setJobs] = useState<JobOpening[]>([])
+  const [filteredJobs, setFilteredJobs] = useState<JobOpening[]>([])
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
+  
+  // Sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  
+  // Job filtering state
+  const [jobSearchTerm, setJobSearchTerm] = useState('')
+  const [jobStatusFilter, setJobStatusFilter] = useState('all')
+  const [jobUrgencyFilter, setJobUrgencyFilter] = useState('all')
+  const [jobSortBy, setJobSortBy] = useState('createdAt')
+  const [showJobFilters, setShowJobFilters] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!user || user.userType !== 'EMPLOYER') {
+      router.push('/')
+      return
+    }
+    fetchJobs()
+  }, [user, router])
+
+  const fetchJobs = async () => {
+    try {
+      const response = await api.get('/jobs')
+      setJobs(response.data.jobs)
+      setFilteredJobs(response.data.jobs)
+      // Generate mock dashboard stats for now
+      generateMockDashboardStats(response.data.jobs)
+    } catch (error) {
+      toast.error('Failed to fetch jobs')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Filter and sort jobs
+  useEffect(() => {
+    let filtered = [...jobs]
+
+    // Search filter
+    if (jobSearchTerm) {
+      filtered = filtered.filter(job =>
+        job.title.toLowerCase().includes(jobSearchTerm.toLowerCase()) ||
+        job.description.toLowerCase().includes(jobSearchTerm.toLowerCase())
+      )
+    }
+
+    // Status filter
+    if (jobStatusFilter !== 'all') {
+      filtered = filtered.filter(job => job.status === jobStatusFilter)
+    }
+
+    // Urgency filter
+    if (jobUrgencyFilter !== 'all') {
+      filtered = filtered.filter(job => job.urgency === jobUrgencyFilter)
+    }
+
+    // Sort
+    filtered.sort((a, b) => {
+      switch (jobSortBy) {
+        case 'title':
+          return a.title.localeCompare(b.title)
+        case 'submissions':
+          return b._count.submissions - a._count.submissions
+        case 'offers':
+          return b._count.offers - a._count.offers
+        case 'createdAt':
+        default:
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      }
+    })
+
+    setFilteredJobs(filtered)
+  }, [jobs, jobSearchTerm, jobStatusFilter, jobUrgencyFilter, jobSortBy])
+
+  const generateMockDashboardStats = (jobs: JobOpening[]) => {
+    const totalSubmissions = jobs.reduce((sum, job) => sum + job._count.submissions, 0)
+    const totalOffers = jobs.reduce((sum, job) => sum + job._count.offers, 0)
+    
+    const mockStats: DashboardStats = {
+      totalSubmissions,
+      interviewsThisWeek: Math.floor(totalSubmissions * 0.3), // Mock: 30% of submissions get interviews
+      offersPending: totalOffers,
+      hiredThisMonth: Math.floor(totalOffers * 0.4), // Mock: 40% of offers result in hires
+      urgentActions: [], // Removed urgent actions
+      recentActivity: [], // Removed recent activity
+      performanceMetrics: {
+        avgTimeToHire: 12,
+        conversionRate: 15,
+        topRecruiter: 'TechRecruit Pro'
+      }
+    }
+    
+    setDashboardStats(mockStats)
+  }
+
+  const handleLogout = () => {
+    logout()
+    router.push('/')
+  }
+
+  if (!mounted) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-primary-600"></div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Top Navigation */}
+      <nav className="bg-white shadow">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16">
+            <div className="flex items-center">
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className="mr-4 p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+              >
+                <Bars3Icon className="h-6 w-6" />
+              </button>
+              <h1 className="text-xl font-semibold text-gray-900">
+                Employer Dashboard
+              </h1>
+            </div>
+            <div className="flex items-center space-x-4">
+              <span className="text-sm text-gray-700">
+                Welcome, {user?.firstName} {user?.lastName}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <div className="flex">
+        {/* Sidebar */}
+        <div className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} fixed inset-y-0 left-0 z-50 w-80 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}>
+          <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">Dashboard</h2>
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="lg:hidden p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+            >
+              <XMarkIcon className="h-6 w-6" />
+            </button>
+          </div>
+          
+          <div className="p-4 space-y-6 overflow-y-auto h-full">
+            {/* Quick Stats */}
+            {dashboardStats && (
+              <div className="space-y-4">
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Quick Stats</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <div className="flex items-center">
+                      <UserGroupIcon className="h-5 w-5 text-blue-500" />
+                      <div className="ml-2">
+                        <p className="text-xs text-blue-600">Submissions</p>
+                        <p className="text-lg font-bold text-blue-900">{dashboardStats.totalSubmissions}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-purple-50 rounded-lg p-3">
+                    <div className="flex items-center">
+                      <VideoCameraIcon className="h-5 w-5 text-purple-500" />
+                      <div className="ml-2">
+                        <p className="text-xs text-purple-600">Interviews</p>
+                        <p className="text-lg font-bold text-purple-900">{dashboardStats.interviewsThisWeek}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-yellow-50 rounded-lg p-3">
+                    <div className="flex items-center">
+                      <CurrencyDollarIcon className="h-5 w-5 text-yellow-500" />
+                      <div className="ml-2">
+                        <p className="text-xs text-yellow-600">Offers</p>
+                        <p className="text-lg font-bold text-yellow-900">{dashboardStats.offersPending}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="flex items-center">
+                      <CheckCircleIcon className="h-5 w-5 text-green-500" />
+                      <div className="ml-2">
+                        <p className="text-xs text-green-600">Hired</p>
+                        <p className="text-lg font-bold text-green-900">{dashboardStats.hiredThisMonth}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+
+            {/* Performance Metrics */}
+            {dashboardStats && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Performance</h3>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-600">Avg. time to hire</span>
+                    <span className="text-sm font-semibold text-gray-900">{dashboardStats.performanceMetrics.avgTimeToHire}d</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-600">Conversion rate</span>
+                    <span className="text-sm font-semibold text-gray-900">{dashboardStats.performanceMetrics.conversionRate}%</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-600">Top recruiter</span>
+                    <span className="text-sm font-semibold text-gray-900 truncate">{dashboardStats.performanceMetrics.topRecruiter}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar Overlay */}
+        {sidebarOpen && (
+          <div 
+            className="fixed inset-0 z-40 bg-black bg-opacity-50 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+        {/* Main Content */}
+        <div className="flex-1 lg:ml-0">
+          <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            <div className="px-4 py-6 sm:px-0">
+              {/* Job Openings Header with Search/Filter */}
+              <div className="mb-6">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0 lg:space-x-4 mb-6">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Your Job Openings</h2>
+                    <p className="text-gray-600">Manage and track your job postings</p>
+                  </div>
+                  <button 
+                    onClick={() => router.push('/employer/jobs/create')}
+                    className="btn-primary"
+                  >
+                    Create New Job
+                  </button>
+                </div>
+
+                {/* Search and Filter Bar */}
+                <div className="bg-white rounded-lg shadow p-4">
+                  <div className="flex flex-col lg:flex-row lg:items-center space-y-4 lg:space-y-0 lg:space-x-4">
+                    {/* Search */}
+                    <div className="flex-1">
+                      <div className="relative">
+                        <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                        <input
+                          type="text"
+                          placeholder="Search jobs by title or description..."
+                          value={jobSearchTerm}
+                          onChange={(e) => setJobSearchTerm(e.target.value)}
+                          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Filter Toggle */}
+                    <div className="flex items-center space-x-4">
+                      <button
+                        onClick={() => setShowJobFilters(!showJobFilters)}
+                        className="flex items-center space-x-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        <FunnelIcon className="h-5 w-5" />
+                        <span>Filters</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Advanced Filters */}
+                  {showJobFilters && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* Status Filter */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                          <select
+                            value={jobStatusFilter}
+                            onChange={(e) => setJobStatusFilter(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="all">All Status</option>
+                            <option value="PUBLISHED">Published</option>
+                            <option value="DRAFT">Draft</option>
+                            <option value="CLOSED">Closed</option>
+                          </select>
+                        </div>
+
+                        {/* Urgency Filter */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Urgency</label>
+                          <select
+                            value={jobUrgencyFilter}
+                            onChange={(e) => setJobUrgencyFilter(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="all">All Urgency</option>
+                            <option value="URGENT">Urgent</option>
+                            <option value="HIGH">High</option>
+                            <option value="NORMAL">Normal</option>
+                            <option value="LOW">Low</option>
+                          </select>
+                        </div>
+
+                        {/* Sort By */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Sort By</label>
+                          <select
+                            value={jobSortBy}
+                            onChange={(e) => setJobSortBy(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="createdAt">Created Date</option>
+                            <option value="title">Title</option>
+                            <option value="submissions">Submissions</option>
+                            <option value="offers">Offers</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Clear Filters */}
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          onClick={() => {
+                            setJobSearchTerm('')
+                            setJobStatusFilter('all')
+                            setJobUrgencyFilter('all')
+                            setJobSortBy('createdAt')
+                          }}
+                          className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800"
+                        >
+                          Clear All Filters
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Results Summary */}
+                <div className="mt-4">
+                  <p className="text-sm text-gray-600">
+                    Showing {filteredJobs.length} of {jobs.length} jobs
+                  </p>
+                </div>
+              </div>
+
+              {/* Jobs List */}
+              <div className="grid gap-6">
+                {filteredJobs.length === 0 ? (
+                  <div className="text-center py-12">
+                    <p className="text-gray-500 text-lg">No job openings found</p>
+                    <p className="text-gray-400 text-sm mt-2">
+                      {jobs.length === 0 
+                        ? "Create your first job opening to get started"
+                        : "Try adjusting your search or filters"
+                      }
+                    </p>
+                    {jobs.length === 0 && (
+                      <button
+                        onClick={() => router.push('/employer/jobs/create')}
+                        className="btn-primary mt-4"
+                      >
+                        Create Your First Job
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  filteredJobs.map((job) => (
+                    <div key={job.id} className="card">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold text-gray-900">{job.title}</h3>
+                          <p className="text-gray-600 mt-1 line-clamp-2">{job.description}</p>
+                          
+                          <div className="mt-4 flex items-center space-x-6 text-sm text-gray-500">
+                            <span>Salary: HK${job.salaryMin.toLocaleString()} - HK${job.salaryMax.toLocaleString()}</span>
+                            <span>Fee: {job.placementFeePercent}%</span>
+                            <span className={`px-2 py-1 rounded-full text-xs ${
+                              job.status === 'PUBLISHED' 
+                                ? 'bg-green-100 text-green-800'
+                                : job.status === 'DRAFT'
+                                ? 'bg-gray-100 text-gray-800'
+                                : 'bg-red-100 text-red-800'
+                            }`}>
+                              {job.status}
+                            </span>
+                            <span className={`px-2 py-1 rounded-full text-xs ${
+                              job.urgency === 'URGENT' 
+                                ? 'bg-red-100 text-red-800'
+                                : job.urgency === 'HIGH'
+                                ? 'bg-orange-100 text-orange-800'
+                                : job.urgency === 'NORMAL'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-gray-100 text-gray-800'
+                            }`}>
+                              {job.urgency}
+                            </span>
+                          </div>
+                          
+                          <div className="mt-3 flex items-center space-x-4 text-sm text-gray-500">
+                            <span>
+                              {job._count.submissions} submissions
+                            </span>
+                            <span>
+                              {job._count.offers} offers
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex space-x-2">
+                          <button 
+                            onClick={() => router.push(`/employer/jobs/${job.id}`)}
+                            className="btn-secondary text-sm"
+                          >
+                            View Details
+                          </button>
+                          <button 
+                            onClick={() => router.push(`/employer/jobs/${job.id}`)}
+                            className="btn-primary text-sm"
+                          >
+                            Manage
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
